@@ -15,7 +15,7 @@ public class LifeSMP implements ModInitializer {
     @Override
     public void onInitialize() {
         LivesNet.registerPayloads();
-        FileOffers.registerPayload();
+        FileShare.registerPayload();
         DeathHandler.register();
         JoinHandler.register();
         InteractHandler.register();
@@ -30,7 +30,7 @@ public class LifeSMP implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             LifeLog.init(server.getServerDirectory());
             LifeConfig.init(server.getServerDirectory());
-            FileOffers.init(server);
+            FileShare.init(server);
         });
         // Boot-time update check — runs after config is loaded. The only line
         // this can put on the main console is a single "update available" warning.
