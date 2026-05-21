@@ -6,6 +6,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -41,6 +44,19 @@ public final class LivesNet {
         } else {
             player.sendSystemMessage(heartBar(lives, max), true);   // true = action bar
         }
+    }
+
+    /**
+     * Flashes the player's heart row in the subtitle slot — shown for ~5
+     * seconds, then it fades. Works on any client (vanilla or modded) since
+     * it's just the standard title/subtitle packet trio; an empty title is
+     * sent so only the subtitle line is visible.
+     */
+    public static void showLivesSubtitle(ServerPlayer player, int lives, int max) {
+        // fadeIn 10t (0.5s), stay 100t (5s), fadeOut 20t (1s)
+        player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 100, 20));
+        player.connection.send(new ClientboundSetSubtitleTextPacket(heartBar(lives, max)));
+        player.connection.send(new ClientboundSetTitleTextPacket(Component.empty()));
     }
 
     /**

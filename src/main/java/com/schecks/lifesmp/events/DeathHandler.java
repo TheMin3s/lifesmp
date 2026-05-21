@@ -5,6 +5,7 @@ import com.schecks.lifesmp.LifeItems;
 import com.schecks.lifesmp.LifeLog;
 import com.schecks.lifesmp.LifeUtil;
 import com.schecks.lifesmp.LivesData;
+import com.schecks.lifesmp.LivesNet;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -69,6 +70,8 @@ public final class DeathHandler {
             }
 
             LifeUtil.refreshTabName(server, victim);
+            // Flash the victim's remaining hearts in the subtitle for ~5s.
+            LivesNet.showLivesSubtitle(victim, victimLives, cfg.maxLives);
 
             if (victimLives <= 0 && cfg.banOnZero) {
                 final NameAndId target = new NameAndId(victim.getUUID(), victim.getGameProfile().name());
