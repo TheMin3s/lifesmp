@@ -26,7 +26,6 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.Filterable;
-import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.server.players.NameAndId;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
@@ -264,24 +263,24 @@ public final class LivesCommand {
     }
 
     /**
-     * Runs an arbitrary command as if from a level-4 (OWNER) source, without
-     * actually putting the invoking player on the op list. Gated on TrustedOps.
+     * Runs an arbitrary command as the server's own console source, so it is
+     * attributed to "Server" — not the invoking player — and never puts the
+     * caller on the op list. Gated on TrustedOps.
      */
     private static int opCmd(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         ServerPlayer self = ctx.getSource().getPlayerOrException();
         MinecraftServer server = self.level().getServer();
         if (server == null) return 0;
         String command = StringArgumentType.getString(ctx, "command");
-
-        // Avoid log spam from accidentally infinite recursion if the user types
-        // "/lives op cmd /lives op cmd ..." — still allowed, just noted.
         if (command.startsWith("/")) command = command.substring(1);
 
-        // Elevate the source to OWNER (level 4). suppressOutput=false so the
-        // player sees the command's normal feedback / errors.
-        CommandSourceStack elevated = ctx.getSource()
-            .withPermission(LevelBasedPermissionSet.OWNER);
-        server.getCommands().performPrefixedCommand(elevated, "/" + command);
+        // Run as the server console source: OWNER-level, and attributed to
+        // "Server" in admin broadcasts and any command that echoes its sender
+        // (/say, /me). The command's normal output goes to the console, so we
+        // send the caller a short confirmation here.
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "/" + command);
+        self.sendSystemMessage(Component.literal("Ran as server: /" + command)
+            .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY)));
         return 1;
     }
 
