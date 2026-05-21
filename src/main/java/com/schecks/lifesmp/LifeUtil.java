@@ -68,17 +68,30 @@ public final class LifeUtil {
         if (entry != null) bans.remove(nameAndId);
     }
 
+    /**
+     * Called when a player's lives actually change: updates the tab-list name
+     * for everyone AND pushes the lives HUD / action-bar fallback to that player.
+     */
     public static void refreshTabName(MinecraftServer server, ServerPlayer player) {
+        broadcastTabPacket(server, player);
+        LivesNet.notifyLivesChanged(server, player);
+    }
+
+    /**
+     * Refreshes every player's tab-list name only — no HUD push. Used on join,
+     * so a player connecting doesn't flash an action bar on everyone else.
+     */
+    public static void refreshAllTabs(MinecraftServer server) {
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            broadcastTabPacket(server, p);
+        }
+    }
+
+    private static void broadcastTabPacket(MinecraftServer server, ServerPlayer player) {
         ClientboundPlayerInfoUpdatePacket packet = new ClientboundPlayerInfoUpdatePacket(
             EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME),
             List.of(player)
         );
         server.getPlayerList().broadcastAll(packet);
-    }
-
-    public static void refreshAllTabs(MinecraftServer server) {
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            refreshTabName(server, p);
-        }
     }
 }

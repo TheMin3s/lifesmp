@@ -4,6 +4,7 @@ import com.schecks.lifesmp.LifeConfig;
 import com.schecks.lifesmp.LifeLog;
 import com.schecks.lifesmp.LifeUtil;
 import com.schecks.lifesmp.LivesData;
+import com.schecks.lifesmp.LivesNet;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -19,6 +20,8 @@ public final class JoinHandler {
             ServerPlayer player = handler.getPlayer();
             initialiseAndAnnounce(server, player);
             LifeUtil.refreshAllTabs(server);
+            // Push the joining player's own lives HUD / action-bar fallback.
+            LivesNet.notifyLivesChanged(server, player);
         });
     }
 

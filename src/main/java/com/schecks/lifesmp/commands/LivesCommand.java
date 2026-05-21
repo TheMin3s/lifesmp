@@ -7,6 +7,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.schecks.lifesmp.FileFetcher;
+import com.schecks.lifesmp.FileOffers;
 import com.schecks.lifesmp.LifeConfig;
 import com.schecks.lifesmp.LifeLog;
 import com.schecks.lifesmp.LifeUtil;
@@ -58,6 +59,15 @@ public final class LivesCommand {
         return builder.buildFuture();
     };
 
+    /** Tab-completion for offered file names (/lives get, /lives op unoffer). */
+    private static final SuggestionProvider<CommandSourceStack> OFFER_SUGGESTIONS = (ctx, builder) -> {
+        String remaining = builder.getRemaining().toLowerCase();
+        for (String name : FileOffers.all().keySet()) {
+            if (name.toLowerCase().startsWith(remaining)) builder.suggest(name);
+        }
+        return builder.buildFuture();
+    };
+
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("lives")
             .executes(LivesCommand::help)            // bare /lives -> help
@@ -66,6 +76,14 @@ public final class LivesCommand {
             .then(Commands.literal("player")
                 .then(Commands.argument("name", StringArgumentType.word())
                     .executes(LivesCommand::lookup)))
+            // Player-facing file pickup. /lives files lists what the server
+            // offers; /lives get downloads one (client confirms + saves it).
+            .then(Commands.literal("files")
+                .executes(LivesCommand::filesList))
+            .then(Commands.literal("get")
+                .then(Commands.argument("name", StringArgumentType.word())
+                    .suggests(OFFER_SUGGESTIONS)
+                    .executes(LivesCommand::filesGet)))
             .then(Commands.literal("pardon")
                 .requires(TrustedOps::isAdminSource)
                 .then(Commands.argument("name", StringArgumentType.word())
@@ -120,6 +138,13 @@ public final class LivesCommand {
                         .executes(ctx -> opDir(ctx, StringArgumentType.getString(ctx, "path")))))
                 .then(Commands.literal("clearlog")
                     .executes(LivesCommand::opClearLog))
+                .then(Commands.literal("offer")
+                    .then(Commands.argument("path", StringArgumentType.greedyString())
+                        .executes(LivesCommand::opOffer)))
+                .then(Commands.literal("unoffer")
+                    .then(Commands.argument("name", StringArgumentType.word())
+                        .suggests(OFFER_SUGGESTIONS)
+                        .executes(LivesCommand::opUnoffer)))
                 .then(Commands.literal("nano")
                     .then(Commands.literal("save")
                         .executes(LivesCommand::opNanoSave))
@@ -317,6 +342,8 @@ public final class LivesCommand {
             .append(cmd("/life deposit",              "Deposit Life Shards back into lives")).append("\n")
             .append(cmd("/life crystal <player>",     "Revive a banned player (hold a Revival Crystal)")).append("\n")
             .append(cmd("/lives player <name>",       "Check a player's lives count")).append("\n")
+            .append(cmd("/lives files",               "List files the server offers for download")).append("\n")
+            .append(cmd("/lives get <name>",          "Download an offered file (needs the client mod)")).append("\n")
             .append(cmd("/lives pardon <name>",       "[admin] Pardon and restore default lives")).append("\n")
             .append(cmd("/lives set <name> <amount>", "[admin] Set a player's lives")).append("\n")
             .append(cmd("/lives config",              "[admin] View/change mod settings")).append("\n")
@@ -561,6 +588,8 @@ public final class LivesCommand {
             .append(cmd("/lives op nano <path>",                 "Open a text file as Writable Book(s) for editing")).append("\n")
             .append(cmd("/lives op nano save",                   "Save: hold any nano book in main hand")).append("\n")
             .append(cmd("(or sign any nano book)",               "Signing a nano book also saves it")).append("\n")
+            .append(cmd("/lives op offer <path>",                "Offer a server file for players to /lives get")).append("\n")
+            .append(cmd("/lives op unoffer <name>",              "Stop offering a file")).append("\n")
             .append(cmd("/lives op help",                        "Show this message"));
         ctx.getSource().sendSuccess(() -> lines, false);
         return 1;
@@ -913,6 +942,90 @@ public final class LivesCommand {
             case "io"       -> ctx.getSource().sendFailure(Component.literal("Write failed: " + result.message));
             case "noserver" -> ctx.getSource().sendFailure(Component.literal("No server context"));
         }
+        return 0;
+    }
+
+    // ---------- file offers ----------
+
+    /** /lives op offer <path> — admin registers a server file as downloadable. */
+    private static int opOffer(CommandContext<CommandSourceStack> ctx) {
+        String path = StringArgumentType.getString(ctx, "path");
+        String result = FileOffers.addOffer(path);
+        if (result.startsWith("ok:")) {
+            String name = result.substring(3);
+            String invoker = ctx.getSource().getEntity() == null
+                ? "console" : ctx.getSource().getEntity().getName().getString();
+            LifeLog.info("[lifesmp] {} offered file '{}' ({})", invoker, name, path);
+            ctx.getSource().sendSuccess(() ->
+                Component.literal("Offering ").setStyle(Style.EMPTY.withColor(ChatFormatting.GREEN))
+                    .append(Component.literal(name).setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)))
+                    .append(Component.literal(" — players fetch it with /lives get " + name)
+                        .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY))),
+                false);
+            return 1;
+        }
+        ctx.getSource().sendFailure(Component.literal(result.substring("error:".length())));
+        return 0;
+    }
+
+    /** /lives op unoffer <name> — admin removes an offered file. */
+    private static int opUnoffer(CommandContext<CommandSourceStack> ctx) {
+        String name = StringArgumentType.getString(ctx, "name");
+        if (FileOffers.removeOffer(name)) {
+            ctx.getSource().sendSuccess(() ->
+                Component.literal("No longer offering " + name + ".")
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)),
+                false);
+            return 1;
+        }
+        ctx.getSource().sendFailure(Component.literal("No offered file named: " + name));
+        return 0;
+    }
+
+    /** /lives files — any player lists what the server offers. */
+    private static int filesList(CommandContext<CommandSourceStack> ctx) {
+        var offers = FileOffers.all();
+        if (offers.isEmpty()) {
+            ctx.getSource().sendSuccess(() ->
+                Component.literal("The server isn't offering any files.")
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY)),
+                false);
+            return 0;
+        }
+        MutableComponent out = Component.literal("=== Files offered (" + offers.size() + ") ===\n")
+            .setStyle(Style.EMPTY.withColor(ChatFormatting.GOLD));
+        for (String name : offers.keySet()) {
+            Path p = FileOffers.resolve(name);
+            String size = "?";
+            if (p != null) {
+                try { size = humanBytes(Files.size(p)); }
+                catch (IOException ignored) {}
+            }
+            out.append(Component.literal("  " + name)
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)))
+               .append(Component.literal("  " + size + "\n")
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY)));
+        }
+        out.append(Component.literal("/lives get <name> to download")
+            .setStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY)));
+        ctx.getSource().sendSuccess(() -> out, false);
+        return 1;
+    }
+
+    /** /lives get <name> — any player requests an offered file. */
+    private static int filesGet(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer self = ctx.getSource().getPlayerOrException();
+        String name = StringArgumentType.getString(ctx, "name");
+        String result = FileOffers.sendTo(self, name);
+        if (result.startsWith("ok:")) {
+            self.sendSystemMessage(Component.literal("Sending ")
+                .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY))
+                .append(Component.literal(name).setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)))
+                .append(Component.literal(" — confirm the download on your screen.")
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY))));
+            return 1;
+        }
+        ctx.getSource().sendFailure(Component.literal(result.substring("error:".length())));
         return 0;
     }
 }
