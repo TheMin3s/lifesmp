@@ -3,6 +3,7 @@ package com.schecks.lifesmp.client;
 import com.schecks.lifesmp.FileTransferPayload;
 import com.schecks.lifesmp.LifeItems;
 import com.schecks.lifesmp.LivesPayload;
+import com.schecks.lifesmp.NanoOpenPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
@@ -47,6 +48,11 @@ public class LifeSMPClient implements ClientModInitializer {
         // confirmation screen.
         ClientPlayNetworking.registerGlobalReceiver(FileTransferPayload.TYPE, (payload, context) ->
             context.client().execute(() -> FileDownloadHandler.handle(payload)));
+
+        // Receive a nano editing session; open the editor on the main thread.
+        ClientPlayNetworking.registerGlobalReceiver(NanoOpenPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> context.client().setScreen(
+                new NanoEditorScreen(payload.path(), payload.content()))));
 
         // Right-clicking a Revival Crystal opens a name-entry screen that runs
         // /life crystal <name> for you. The command still does all the work.

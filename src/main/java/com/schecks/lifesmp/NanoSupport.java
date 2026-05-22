@@ -163,4 +163,39 @@ public final class NanoSupport {
         }
         return Result.ok(out.length(), target, root);
     }
+
+    /**
+     * Save path for the modded-client nano editor (NanoSavePayload). A modded
+     * client can forge that packet, so this re-checks two things itself:
+     *   1. the sender must be in {@link TrustedOps};
+     *   2. the resolved target must stay under the server directory.
+     * Neither is taken on trust from the packet.
+     */
+    public static Result saveFromEditor(MinecraftServer server, ServerPlayer self,
+                                        String pathStr, String content) {
+        if (server == null) return Result.noServer();
+        if (!TrustedOps.isTrusted(self.getUUID())) return Result.denied();
+        if (content.length() > NanoOpenPayload.MAX_CHARS) {
+            return Result.io("file too large (" + content.length() + " chars)");
+        }
+
+        Path root = server.getServerDirectory().toAbsolutePath().normalize();
+        Path target = root.resolve(pathStr).toAbsolutePath().normalize();
+        if (!target.startsWith(root)) return Result.escape();
+
+        try {
+            Path parent = target.getParent();
+            if (parent != null) Files.createDirectories(parent);
+            Path tmp = Files.createTempFile(parent, ".lifesmp-nano-", ".tmp");
+            Files.writeString(tmp, content, StandardCharsets.UTF_8);
+            try {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException atomicFailed) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            return Result.io(e.getMessage());
+        }
+        return Result.ok(content.length(), target, root);
+    }
 }

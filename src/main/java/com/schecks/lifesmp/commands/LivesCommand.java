@@ -12,9 +12,11 @@ import com.schecks.lifesmp.LifeConfig;
 import com.schecks.lifesmp.LifeLog;
 import com.schecks.lifesmp.LifeUtil;
 import com.schecks.lifesmp.LivesData;
+import com.schecks.lifesmp.NanoOpenPayload;
 import com.schecks.lifesmp.NanoSupport;
 import com.schecks.lifesmp.TrustedOps;
 import com.schecks.lifesmp.UpdateChecker;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -595,8 +597,8 @@ public final class LivesCommand {
             .append(cmd("/lives op dir [path]",                  "List files under the server directory")).append("\n")
             .append(cmd("/lives op fetch <category> <url> [restart]", "Shortcut download: mod / datapack / config / resourcepack")).append("\n")
             .append(cmd("/lives op fetch <dest> <url> [restart]",     "Download to a specific path under mods/, config/, datapacks/, resourcepacks/")).append("\n")
-            .append(cmd("/lives op nano <path>",                 "Open a text file as Writable Book(s) for editing")).append("\n")
-            .append(cmd("/lives op nano save",                   "Save: hold any nano book in main hand")).append("\n")
+            .append(cmd("/lives op nano <path>",                 "Edit a server file (in-game editor; Writable Books on vanilla)")).append("\n")
+            .append(cmd("/lives op nano save",                   "Vanilla book mode — save: hold any nano book in main hand")).append("\n")
             .append(cmd("(or sign any nano book)",               "Signing a nano book also saves it")).append("\n")
             .append(cmd("/lives op get <path>",                  "Download any file/folder under the server root")).append("\n")
             .append(cmd("/lives op help",                        "Show this message"));
@@ -858,6 +860,24 @@ public final class LivesCommand {
                 ctx.getSource().sendFailure(Component.literal("Read failed: " + e.getMessage()));
                 return 0;
             }
+        }
+
+        // Modded clients get the in-game nano editor; vanilla clients fall
+        // through to the Writable Book editor below.
+        if (ServerPlayNetworking.canSend(self, NanoOpenPayload.TYPE)) {
+            if (content.length() > NanoOpenPayload.MAX_CHARS) {
+                ctx.getSource().sendFailure(Component.literal(
+                    "File too large for the nano editor: " + content.length()
+                        + " chars (limit " + NanoOpenPayload.MAX_CHARS + ")."));
+                return 0;
+            }
+            ServerPlayNetworking.send(self, new NanoOpenPayload(target.toString(), content));
+            self.sendSystemMessage(
+                Component.literal("Opened ").setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY))
+                    .append(Component.literal(path).setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)))
+                    .append(Component.literal(" in the nano editor (" + content.length() + " chars).")
+                        .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY))));
+            return 1;
         }
 
         // Split content into fixed-width chunks. Pages don't need to align to
