@@ -5,7 +5,10 @@ import com.schecks.lifesmp.LifeLog;
 import com.schecks.lifesmp.LifeUtil;
 import com.schecks.lifesmp.LivesData;
 import com.schecks.lifesmp.LivesNet;
+import com.schecks.lifesmp.ServerVersionPayload;
+import com.schecks.lifesmp.UpdateChecker;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
@@ -22,6 +25,11 @@ public final class JoinHandler {
             LifeUtil.refreshAllTabs(server);
             // Push the joining player's own lives HUD / action-bar fallback.
             LivesNet.notifyLivesChanged(server, player);
+            // Tell modded clients our LifeSMP version so they can self-sync.
+            if (ServerPlayNetworking.canSend(player, ServerVersionPayload.TYPE)) {
+                ServerPlayNetworking.send(player,
+                    new ServerVersionPayload(UpdateChecker.currentVersion()));
+            }
         });
     }
 

@@ -78,7 +78,23 @@ public final class UpdateChecker {
     }
 
     private static Release fetchLatestRelease(String repo) throws IOException, InterruptedException {
-        URI uri = URI.create("https://api.github.com/repos/" + repo + "/releases/latest");
+        return fetchReleaseFrom(URI.create(
+            "https://api.github.com/repos/" + repo + "/releases/latest"));
+    }
+
+    /**
+     * Fetches a specific tagged release (vX.Y.Z) from {@code repo}, or null if
+     * that tag has no release. Used by the client to sync to a server's exact
+     * version.
+     */
+    public static Release fetchReleaseByTag(String repo, String version)
+            throws IOException, InterruptedException {
+        String tag = (version.startsWith("v") || version.startsWith("V")) ? version : "v" + version;
+        return fetchReleaseFrom(URI.create(
+            "https://api.github.com/repos/" + repo + "/releases/tags/" + tag));
+    }
+
+    private static Release fetchReleaseFrom(URI uri) throws IOException, InterruptedException {
         HttpClient client = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(15))
@@ -246,7 +262,7 @@ public final class UpdateChecker {
     }
 
     /** True if {@code jar} is a readable zip that contains a fabric.mod.json. */
-    private static boolean looksLikeValidMod(Path jar) {
+    public static boolean looksLikeValidMod(Path jar) {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             return zip.getEntry("fabric.mod.json") != null;
         } catch (IOException e) {

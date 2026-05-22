@@ -5,6 +5,7 @@ import com.schecks.lifesmp.FileTransferPayload;
 import com.schecks.lifesmp.LifeItems;
 import com.schecks.lifesmp.LivesPayload;
 import com.schecks.lifesmp.NanoOpenPayload;
+import com.schecks.lifesmp.ServerVersionPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
@@ -59,6 +60,10 @@ public class LifeSMPClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(DirListingPayload.TYPE, (payload, context) ->
             context.client().execute(() -> context.client().setScreen(
                 new DirBrowserScreen(payload.path(), payload.entries()))));
+
+        // Receive the server's LifeSMP version; self-update if we're behind.
+        ClientPlayNetworking.registerGlobalReceiver(ServerVersionPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> ClientUpdater.onServerVersion(payload.version())));
 
         // Right-clicking a Revival Crystal opens a name-entry screen that runs
         // /life crystal <name> for you. The command still does all the work.

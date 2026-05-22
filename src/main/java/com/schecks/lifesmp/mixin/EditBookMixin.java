@@ -25,7 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class EditBookMixin {
-    @Inject(method = "handleEditBook", at = @At("HEAD"))
+    @Inject(method = "handleEditBook", at = @At("HEAD"), cancellable = true)
     private void lifesmp$saveOnSign(ServerboundEditBookPacket packet, CallbackInfo ci) {
         if (packet.title().isEmpty()) return;
         ServerPlayer self = ((ServerGamePacketListenerImpl) (Object) this).player;
@@ -49,12 +49,26 @@ public abstract class EditBookMixin {
 
         NanoSupport.Result result = NanoSupport.save(self, marker, slot, packet.pages());
         switch (result.kind) {
-            case "ok" -> self.sendSystemMessage(
-                Component.literal("Saved ").setStyle(Style.EMPTY.withColor(ChatFormatting.GREEN))
-                    .append(Component.literal(result.bytes + " chars on sign")
-                        .setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)))
-                    .append(Component.literal(" -> " + result.serverRoot.relativize(result.target))
-                        .setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA))));
+            case "ok" -> {
+                self.sendSystemMessage(
+                    Component.literal("Saved ").setStyle(Style.EMPTY.withColor(ChatFormatting.GREEN))
+                        .append(Component.literal(result.bytes + " chars on sign")
+                            .setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)))
+                        .append(Component.literal(" -> " + result.serverRoot.relativize(result.target))
+                            .setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA))));
+                // Signing consumes the nano book(s): remove every part of this
+                // file from the inventory, then skip vanilla's sign handling so
+                // it doesn't try to convert an item we just deleted.
+                for (int i = 0; i < inv.getContainerSize(); i++) {
+                    NanoSupport.NanoMarker m = NanoSupport.readMarker(inv.getItem(i));
+                    if (m != null && m.path().equals(marker.path())
+                            && marker.issuer() != null && marker.issuer().equals(m.issuer())) {
+                        inv.setItem(i, ItemStack.EMPTY);
+                    }
+                }
+                self.inventoryMenu.broadcastChanges();
+                ci.cancel();
+            }
             case "denied" -> self.sendSystemMessage(
                 Component.literal("Sign-save denied: this nano book was issued to a different account")
                     .setStyle(Style.EMPTY.withColor(ChatFormatting.RED)));

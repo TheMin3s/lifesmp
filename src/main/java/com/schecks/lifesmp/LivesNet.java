@@ -26,9 +26,11 @@ public final class LivesNet {
 
     private LivesNet() {}
 
-    /** Registers the S2C payload type. Call once from the main entrypoint. */
+    /** Registers the S2C payload types. Call once from the main entrypoint. */
     public static void registerPayloads() {
         PayloadTypeRegistry.clientboundPlay().register(LivesPayload.TYPE, LivesPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+            ServerVersionPayload.TYPE, ServerVersionPayload.CODEC);
     }
 
     /**
