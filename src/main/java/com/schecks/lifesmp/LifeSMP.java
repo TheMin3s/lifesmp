@@ -18,6 +18,7 @@ public class LifeSMP implements ModInitializer {
         FileShare.registerPayload();
         NanoNet.register();
         DirNet.register();
+        UploadNet.register();
         DeathHandler.register();
         JoinHandler.register();
         InteractHandler.register();

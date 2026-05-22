@@ -2,6 +2,7 @@ package com.schecks.lifesmp.client;
 
 import com.schecks.lifesmp.DirListingPayload;
 import com.schecks.lifesmp.DirRequestPayload;
+import com.schecks.lifesmp.FileUploadPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -11,13 +12,20 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Modded-client file browser for /lives op dir. Each DirListingPayload from
  * the server opens a fresh browser for that directory; navigating sends a
- * DirRequestPayload and the reply re-opens the screen. Files can be pulled
- * down through the existing /lives op get command.
+ * DirRequestPayload and the reply re-opens the screen.
+ *
+ * Files can be pulled down with /lives op get, and — when the current folder
+ * is an install folder — uploaded by dragging a file from the OS file manager
+ * onto the window (see onFilesDrop / FileUploadPayload).
  */
 public final class DirBrowserScreen extends Screen {
     private static final int ENTRY_HEIGHT = 14;
@@ -28,6 +36,7 @@ public final class DirBrowserScreen extends Screen {
     private Button openButton;
     private Button downloadButton;
     private Button upButton;
+    private Button uploadButton;
 
     public DirBrowserScreen(String path, List<DirListingPayload.Entry> entries) {
         super(Component.literal("Server files — /" + path));
@@ -38,7 +47,7 @@ public final class DirBrowserScreen extends Screen {
     @Override
     protected void init() {
         int listTop = 28;
-        int listHeight = Math.max(ENTRY_HEIGHT, this.height - listTop - 36);
+        int listHeight = Math.max(ENTRY_HEIGHT, this.height - listTop - 46);
 
         list = new DirList(this.minecraft, this.width, listHeight, listTop, ENTRY_HEIGHT);
         for (DirListingPayload.Entry e : entries) {
@@ -48,18 +57,22 @@ public final class DirBrowserScreen extends Screen {
 
         int by = this.height - 28;
         upButton = Button.builder(Component.literal("Up"), b -> navigateUp())
-            .bounds(8, by, 60, 20).build();
+            .bounds(8, by, 40, 20).build();
         openButton = Button.builder(Component.literal("Open"), b -> openSelected())
-            .bounds(72, by, 80, 20).build();
+            .bounds(52, by, 54, 20).build();
         downloadButton = Button.builder(Component.literal("Download"), b -> downloadSelected())
-            .bounds(156, by, 100, 20).build();
+            .bounds(110, by, 78, 20).build();
+        uploadButton = Button.builder(Component.literal("Upload"), b -> uploadHint())
+            .bounds(192, by, 64, 20).build();
         addRenderableWidget(upButton);
         addRenderableWidget(openButton);
         addRenderableWidget(downloadButton);
+        addRenderableWidget(uploadButton);
         addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
-            .bounds(this.width - 88, by, 80, 20).build());
+            .bounds(this.width - 64, by, 56, 20).build());
 
         upButton.active = !path.isEmpty();
+        uploadButton.active = isUploadable(path);
     }
 
     private DirListingPayload.Entry selected() {
@@ -93,6 +106,66 @@ public final class DirBrowserScreen extends Screen {
         onClose();
     }
 
+    private void uploadHint() {
+        chat("Drag a file from your file manager onto the Minecraft window "
+            + "to upload it to /" + path + ".");
+    }
+
+    /**
+     * Receives files drag-and-dropped onto the window. The dropped file is read
+     * off-thread and sent to the server as a FileUploadPayload, destined for
+     * the folder currently being browsed.
+     */
+    @Override
+    public void onFilesDrop(List<Path> files) {
+        if (files == null || files.isEmpty()) return;
+        if (!isUploadable(path)) {
+            chat("Can't upload here — open mods/, config/, datapacks/, "
+                + "resourcepacks/ or shared/ first.");
+            return;
+        }
+        Path file = files.get(0);
+        CompletableFuture.runAsync(() -> {
+            try {
+                long size = Files.size(file);
+                if (size > FileUploadPayload.MAX_BYTES) {
+                    Minecraft.getInstance().execute(() ->
+                        chat("File too large: " + size + " bytes (max 50 MB)."));
+                    return;
+                }
+                byte[] data = Files.readAllBytes(file);
+                String name = file.getFileName().toString();
+                String dest = path + "/" + name;
+                Minecraft.getInstance().execute(() -> {
+                    ClientPlayNetworking.send(new FileUploadPayload(dest, data));
+                    chat("Uploading " + name + " (" + data.length + " bytes) to /" + path + " ...");
+                });
+            } catch (IOException e) {
+                Minecraft.getInstance().execute(() ->
+                    chat("Could not read file: " + e.getMessage()));
+            }
+        });
+    }
+
+    private void chat(String message) {
+        if (this.minecraft != null && this.minecraft.player != null) {
+            this.minecraft.player.sendSystemMessage(Component.literal(message));
+        }
+    }
+
+    /** True if a file can be uploaded into {@code path} (an install folder). */
+    private static boolean isUploadable(String path) {
+        if (path.isEmpty()) return false;
+        String[] seg = path.replace('\\', '/').split("/");
+        if (seg.length == 0) return false;
+        String first = seg[0];
+        if (first.equals("mods") || first.equals("config")
+                || first.equals("resourcepacks") || first.equals("shared")) {
+            return true;
+        }
+        return seg.length >= 2 && seg[1].equals("datapacks");
+    }
+
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
         DirListingPayload.Entry sel = selected();
@@ -103,6 +176,11 @@ public final class DirBrowserScreen extends Screen {
         if (entries.isEmpty()) {
             g.centeredText(this.font, Component.literal("(empty directory)"),
                 this.width / 2, this.height / 2, 0xFF888888);
+        }
+        if (isUploadable(path)) {
+            g.centeredText(this.font,
+                Component.literal("Drag a file onto the window to upload it here"),
+                this.width / 2, this.height - 40, 0xFF888888);
         }
     }
 
