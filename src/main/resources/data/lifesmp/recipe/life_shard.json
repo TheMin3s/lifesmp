@@ -21,7 +21,8 @@
         { "text": "Redeem this to gain 1 life.", "color": "gray", "italic": false },
         { "text": "Obtained from /life withdraw", "color": "dark_gray", "italic": false }
       ],
-      "minecraft:custom_data": "{lifesmp_life_shard:1b}"
+      "minecraft:custom_data": "{lifesmp_life_shard:1b}",
+      "minecraft:custom_model_data": { "strings": ["lifesmp:life_shard"] }
     }
   }
 }

@@ -10,6 +10,7 @@ import net.minecraft.network.chat.TextColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.ItemLore;
 
 import java.util.List;
@@ -40,6 +41,11 @@ public final class LifeItems {
         CompoundTag tag = new CompoundTag();
         tag.putBoolean(LIFE_SHARD_TAG, true);
         stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+        // Modded clients swap the totem model for the Life Shard texture via
+        // this marker (see assets/minecraft/items/totem_of_undying.json).
+        // Vanilla clients ignore it and keep rendering a totem.
+        stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(
+            List.of(), List.of(), List.of("lifesmp:life_shard"), List.of()));
         return stack;
     }
 
