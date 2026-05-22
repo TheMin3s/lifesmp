@@ -1,5 +1,6 @@
 package com.schecks.lifesmp.client;
 
+import com.schecks.lifesmp.DirListingPayload;
 import com.schecks.lifesmp.FileTransferPayload;
 import com.schecks.lifesmp.LifeItems;
 import com.schecks.lifesmp.LivesPayload;
@@ -53,6 +54,11 @@ public class LifeSMPClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(NanoOpenPayload.TYPE, (payload, context) ->
             context.client().execute(() -> context.client().setScreen(
                 new NanoEditorScreen(payload.path(), payload.content()))));
+
+        // Receive a directory listing; open/refresh the file browser.
+        ClientPlayNetworking.registerGlobalReceiver(DirListingPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> context.client().setScreen(
+                new DirBrowserScreen(payload.path(), payload.entries()))));
 
         // Right-clicking a Revival Crystal opens a name-entry screen that runs
         // /life crystal <name> for you. The command still does all the work.

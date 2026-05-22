@@ -6,6 +6,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.schecks.lifesmp.DirListingPayload;
+import com.schecks.lifesmp.DirNet;
 import com.schecks.lifesmp.FileFetcher;
 import com.schecks.lifesmp.FileShare;
 import com.schecks.lifesmp.LifeConfig;
@@ -594,7 +596,7 @@ public final class LivesCommand {
             .append(cmd("/lives op add <name>",                  "Add a player to the vanilla op list")).append("\n")
             .append(cmd("/lives op remove <name>",               "Remove a player from the vanilla op list")).append("\n")
             .append(cmd("/lives op restart",                     "Stop the server (your wrapper should auto-restart)")).append("\n")
-            .append(cmd("/lives op dir [path]",                  "List files under the server directory")).append("\n")
+            .append(cmd("/lives op dir [path]",                  "Browse server files (in-game browser; chat list on vanilla)")).append("\n")
             .append(cmd("/lives op fetch <category> <url> [restart]", "Shortcut download: mod / datapack / config / resourcepack")).append("\n")
             .append(cmd("/lives op fetch <dest> <url> [restart]",     "Download to a specific path under mods/, config/, datapacks/, resourcepacks/")).append("\n")
             .append(cmd("/lives op nano <path>",                 "Edit a server file (in-game editor; Writable Books on vanilla)")).append("\n")
@@ -747,6 +749,13 @@ public final class LivesCommand {
                     .append(Component.literal(" (file, " + (size >= 0 ? size + " B" : "?") + ")")
                         .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY)))
             );
+            return 1;
+        }
+
+        // Modded clients get the in-game file browser; vanilla clients get
+        // the chat listing below.
+        if (ServerPlayNetworking.canSend(self, DirListingPayload.TYPE)) {
+            DirNet.sendListing(server, self, relative);
             return 1;
         }
 
