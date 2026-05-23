@@ -19,6 +19,7 @@ public class LifeSMP implements ModInitializer {
         NanoNet.register();
         DirNet.register();
         UploadNet.register();
+        ConsoleNet.register();
         DeathHandler.register();
         JoinHandler.register();
         InteractHandler.register();
@@ -39,8 +40,13 @@ public class LifeSMP implements ModInitializer {
         // enabled (the default) it downloads, installs and restarts into a newer
         // version on its own; otherwise it just logs a single "update available"
         // warning to the console.
-        ServerLifecycleEvents.SERVER_STARTED.register(UpdateChecker::checkOnBoot);
-        ServerLifecycleEvents.SERVER_STOPPED.register(server ->
-            LifeLog.close());
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            ConsoleTap.start(server);
+            UpdateChecker.checkOnBoot(server);
+        });
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            ConsoleTap.stop();
+            LifeLog.close();
+        });
     }
 }

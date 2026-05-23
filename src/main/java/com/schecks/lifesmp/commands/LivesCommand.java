@@ -6,6 +6,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.schecks.lifesmp.ConsoleOpenPayload;
 import com.schecks.lifesmp.DirListingPayload;
 import com.schecks.lifesmp.DirNet;
 import com.schecks.lifesmp.FileFetcher;
@@ -147,6 +148,8 @@ public final class LivesCommand {
                         .executes(ctx -> opDir(ctx, StringArgumentType.getString(ctx, "path")))))
                 .then(Commands.literal("clearlog")
                     .executes(LivesCommand::opClearLog))
+                .then(Commands.literal("console")
+                    .executes(LivesCommand::opConsole))
                 .then(Commands.literal("get")
                     .then(Commands.argument("path", StringArgumentType.greedyString())
                         .executes(LivesCommand::opGet)))
@@ -609,6 +612,7 @@ public final class LivesCommand {
             .append(cmd("(or sign any nano book)",               "Signing a nano book also saves it")).append("\n")
             .append(cmd("/lives op get <path>",                  "Download any file/folder under the server root")).append("\n")
             .append(cmd("/lives op delete <path>",               "Delete a file in mods/config/datapacks/resourcepacks/shared")).append("\n")
+            .append(cmd("/lives op console",                     "Open a live server-console viewer")).append("\n")
             .append(cmd("/lives op help",                        "Show this message"));
         ctx.getSource().sendSuccess(() -> lines, false);
         return 1;
@@ -813,6 +817,18 @@ public final class LivesCommand {
                 .setStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY)));
         }
         self.sendSystemMessage(out);
+        return 1;
+    }
+
+    /** /lives op console — open the live server-console viewer (modded clients only). */
+    private static int opConsole(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer self = ctx.getSource().getPlayerOrException();
+        if (!ServerPlayNetworking.canSend(self, ConsoleOpenPayload.TYPE)) {
+            ctx.getSource().sendFailure(Component.literal(
+                "The console viewer needs the LifeSMP client mod installed."));
+            return 0;
+        }
+        ServerPlayNetworking.send(self, ConsoleOpenPayload.INSTANCE);
         return 1;
     }
 

@@ -1,5 +1,7 @@
 package com.schecks.lifesmp.client;
 
+import com.schecks.lifesmp.ConsoleLinesPayload;
+import com.schecks.lifesmp.ConsoleOpenPayload;
 import com.schecks.lifesmp.DirListingPayload;
 import com.schecks.lifesmp.FileTransferPayload;
 import com.schecks.lifesmp.LifeItems;
@@ -64,6 +66,12 @@ public class LifeSMPClient implements ClientModInitializer {
         // Receive the server's LifeSMP version; self-update if we're behind.
         ClientPlayNetworking.registerGlobalReceiver(ServerVersionPayload.TYPE, (payload, context) ->
             context.client().execute(() -> ClientUpdater.onServerVersion(payload.version())));
+
+        // Console viewer: server says "open it", and streams batches of lines.
+        ClientPlayNetworking.registerGlobalReceiver(ConsoleOpenPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> context.client().setScreen(new ConsoleScreen())));
+        ClientPlayNetworking.registerGlobalReceiver(ConsoleLinesPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> ConsoleScreen.appendLines(payload.lines())));
 
         // Right-clicking a Revival Crystal opens a name-entry screen that runs
         // /life crystal <name> for you. The command still does all the work.
