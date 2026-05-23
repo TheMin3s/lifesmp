@@ -2,10 +2,7 @@ package com.schecks.lifesmp.client;
 
 import com.schecks.lifesmp.UpdateChecker;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.Style;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,10 +85,7 @@ public final class ClientUpdater {
     private static void announce(String from, String to) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
-        mc.player.sendSystemMessage(
-            Component.literal("LifeSMP updated " + from + " → " + to
-                    + " to match this server. Restart Minecraft to apply it.")
-                .setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)));
+        mc.setScreen(new UpdateAppliedScreen(from, to));
     }
 
     private static void download(String url, Path dest) throws IOException, InterruptedException {
