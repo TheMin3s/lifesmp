@@ -3,7 +3,6 @@ package com.schecks.lifesmp.client;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -25,15 +24,34 @@ public final class UpdateAppliedScreen extends Screen {
     protected void init() {
         int cx = this.width / 2;
         int cy = this.height / 2;
-        addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
-            .bounds(cx - 75, cy + 40, 150, 20)
+        addRenderableWidget(Button.builder(Component.literal("Restart Minecraft Now"), b -> restart())
+            .bounds(cx - 154, cy + 40, 150, 20)
             .build());
+        addRenderableWidget(Button.builder(Component.literal("Later"), b -> openSkipConfirm())
+            .bounds(cx + 4, cy + 40, 150, 20)
+            .build());
+    }
+
+    /** First-screen Esc is disabled so skipping the restart isn't a one-tap. */
+    @Override
+    public boolean shouldCloseOnEsc() {
+        return false;
     }
 
     @Override
     public void onClose() {
         if (this.minecraft != null) {
             this.minecraft.setScreen(null);
+        }
+    }
+
+    private void restart() {
+        if (this.minecraft != null) this.minecraft.stop();
+    }
+
+    private void openSkipConfirm() {
+        if (this.minecraft != null) {
+            this.minecraft.setScreen(new UpdateRefuseConfirmScreen());
         }
     }
 
