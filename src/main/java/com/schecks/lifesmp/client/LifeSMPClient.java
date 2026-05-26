@@ -106,7 +106,11 @@ public class LifeSMPClient implements ClientModInitializer {
         int lives = ClientLivesState.lives();
         Font font = mc.font;
         int x = g.guiWidth() / 2 - 91;     // left edge of the hotbar
-        int y = g.guiHeight() - 58;        // sits right on top of the armor bar
+        // Above the armor bar normally; if no armor is equipped, drop into
+        // the empty armor row so the heart isn't floating in dead space.
+        int y = (mc.player.getArmorValue() > 0)
+            ? g.guiHeight() - 59
+            : g.guiHeight() - 49;
 
         // Hardcore heart icon + "x<lives>" — compact, armor-bar styled.
         g.blitSprite(RenderPipelines.GUI_TEXTURED, HARDCORE_HEART, x, y, 9, 9);
