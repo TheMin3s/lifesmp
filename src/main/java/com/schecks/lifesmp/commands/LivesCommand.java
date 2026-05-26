@@ -155,6 +155,9 @@ public final class LivesCommand {
                 .then(Commands.literal("delete")
                     .then(Commands.argument("path", StringArgumentType.greedyString())
                         .executes(LivesCommand::opDelete)))
+                .then(Commands.literal("rename")
+                    .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(LivesCommand::opRename)))
                 .then(Commands.literal("nano")
                     .then(Commands.literal("save")
                         .executes(LivesCommand::opNanoSave))
@@ -611,6 +614,7 @@ public final class LivesCommand {
             .append(cmd("(or sign any nano book)",               "Signing a nano book also saves it")).append("\n")
             .append(cmd("/lives op get <path>",                  "Download any file/folder under the server root")).append("\n")
             .append(cmd("/lives op delete <path>",               "Delete a file in mods/config/datapacks/resourcepacks/shared")).append("\n")
+            .append(cmd("/lives op rename <path> <newname>",     "Rename a file in those same folders")).append("\n")
             .append(cmd("/lives op console",                     "Open a live server-console viewer")).append("\n")
             .append(cmd("/lives op help",                        "Show this message"));
         ctx.getSource().sendSuccess(() -> lines, false);
@@ -1085,6 +1089,83 @@ public final class LivesCommand {
         }
         ctx.getSource().sendFailure(Component.literal(result.substring("error:".length())));
         return 0;
+    }
+
+    /**
+     * /lives op rename &lt;old-path&gt; &lt;new-name&gt; — renames a file in the
+     * dir-writable folders. Same guardrails as delete: confined to the
+     * writable-roots set, won't rename the running LifeSMP jar, refuses to
+     * overwrite an existing file. Greedy argument; the last space separates
+     * the path from the new name, so paths with spaces aren't supported.
+     */
+    private static int opRename(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer self = ctx.getSource().getPlayerOrException();
+        MinecraftServer server = self.level().getServer();
+        if (server == null) return 0;
+        String args = StringArgumentType.getString(ctx, "args");
+        int lastSpace = args.lastIndexOf(' ');
+        if (lastSpace <= 0 || lastSpace == args.length() - 1) {
+            ctx.getSource().sendFailure(Component.literal(
+                "Usage: /lives op rename <path> <new-name>"));
+            return 0;
+        }
+        String relPath = args.substring(0, lastSpace).trim();
+        String newName = args.substring(lastSpace + 1).trim();
+        if (newName.isEmpty() || newName.contains("/") || newName.contains("\\") || newName.equals("..")) {
+            ctx.getSource().sendFailure(Component.literal("Invalid new name: " + newName));
+            return 0;
+        }
+
+        Path root = server.getServerDirectory().toAbsolutePath().normalize();
+        Path target = root.resolve(relPath).toAbsolutePath().normalize();
+        if (!target.startsWith(root) || target.equals(root)) {
+            ctx.getSource().sendFailure(Component.literal("Path escapes the server directory."));
+            return 0;
+        }
+        if (!Files.exists(target)) {
+            ctx.getSource().sendFailure(Component.literal("No such file: " + relPath));
+            return 0;
+        }
+        Path rel = root.relativize(target);
+        boolean underDatapacks = rel.getNameCount() >= 3
+            && rel.getName(1).toString().equals("datapacks");
+        LifeConfig cfg = LifeConfig.get();
+        if (!cfg.dirWritableRootsAsSet().contains(rel.getName(0).toString()) && !underDatapacks) {
+            ctx.getSource().sendFailure(Component.literal(
+                "Rename is limited to: " + cfg.dirWritableRoots
+                + " or <level>/datapacks/."));
+            return 0;
+        }
+        Path ownJar = UpdateChecker.ownJarPath();
+        if (ownJar != null && ownJar.toAbsolutePath().normalize().equals(target)) {
+            ctx.getSource().sendFailure(Component.literal("Refusing to rename LifeSMP's own jar."));
+            return 0;
+        }
+        Path newTarget = target.resolveSibling(newName).toAbsolutePath().normalize();
+        if (!newTarget.startsWith(root)) {
+            ctx.getSource().sendFailure(Component.literal("New name resolves outside the server directory."));
+            return 0;
+        }
+        if (Files.exists(newTarget)) {
+            ctx.getSource().sendFailure(Component.literal("A file named " + newName + " already exists."));
+            return 0;
+        }
+        try {
+            Files.move(target, newTarget);
+        } catch (IOException e) {
+            ctx.getSource().sendFailure(Component.literal("Rename failed: " + e.getMessage()));
+            return 0;
+        }
+        Path finalRel = root.relativize(newTarget);
+        LifeLog.info("[lifesmp] {} renamed {} -> {}",
+            self.getGameProfile().name(), rel, finalRel);
+        ctx.getSource().sendSuccess(() ->
+            Component.literal("Renamed ").setStyle(Style.EMPTY.withColor(ChatFormatting.GREEN))
+                .append(Component.literal(rel.toString()).setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)))
+                .append(Component.literal(" -> ").setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY)))
+                .append(Component.literal(finalRel.toString()).setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA))),
+            false);
+        return 1;
     }
 
     /**

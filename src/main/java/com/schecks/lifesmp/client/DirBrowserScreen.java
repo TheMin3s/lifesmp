@@ -10,6 +10,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 
@@ -213,6 +214,23 @@ public final class DirBrowserScreen extends Screen {
         return seg.length >= 2 && seg[1].equals("datapacks");
     }
 
+    /**
+     * Right-click on an entry opens its context menu (Open/Download/Nano/
+     * Rename/Delete). Other clicks fall through to the list/buttons.
+     */
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (event.button() == 1 && list != null) {
+            DirEntry hovered = list.entryAt(event.x(), event.y());
+            if (hovered != null && this.minecraft != null) {
+                list.setSelected(hovered);
+                this.minecraft.setScreen(new EntryContextScreen(path, hovered.data));
+                return true;
+            }
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
         DirListingPayload.Entry sel = selected();
@@ -254,6 +272,11 @@ public final class DirBrowserScreen extends Screen {
         /** Public alias for the protected addEntry, callable from the screen. */
         void add(DirEntry entry) {
             addEntry(entry);
+        }
+
+        /** Exposes the protected entry-at-position lookup for the screen's right-click handler. */
+        DirEntry entryAt(double mouseX, double mouseY) {
+            return getEntryAtPosition(mouseX, mouseY);
         }
     }
 

@@ -11,6 +11,9 @@
     "PlayerListMixin",
     "SlotMixin"
   ],
+  "client": [
+    "InventoryHeartsMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }
