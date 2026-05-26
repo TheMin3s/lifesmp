@@ -8,6 +8,7 @@ import com.schecks.lifesmp.LivesNet;
 import com.schecks.lifesmp.MaskConfig;
 import com.schecks.lifesmp.ServerVersionPayload;
 import com.schecks.lifesmp.UpdateChecker;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -38,6 +39,14 @@ public final class JoinHandler {
         });
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
             LifeUtil.applySpawnImmunity(newPlayer));
+        // Cancel every damage source while a player is in their spawn-immunity
+        // window. Skips the MobEffect path entirely so nothing shows up in the
+        // effects list, and covers fire/lava/drowning/etc for free.
+        ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
+            !(entity instanceof ServerPlayer sp && LifeUtil.isSpawnImmune(sp.getUUID())));
+        // Clean up the per-player timestamp map on disconnect.
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+            LifeUtil.clearSpawnImmunity(handler.getPlayer().getUUID()));
     }
 
     /** Three chat lines nudging a vanilla client to install the LifeSMP mod. */

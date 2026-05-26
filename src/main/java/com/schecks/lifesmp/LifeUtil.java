@@ -8,12 +8,12 @@ import net.minecraft.server.players.NameAndId;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.server.players.UserBanList;
 import net.minecraft.server.players.UserBanListEntry;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class LifeUtil {
     private LifeUtil() {}
@@ -91,14 +91,38 @@ public final class LifeUtil {
 
     /**
      * Grants the player a few seconds of damage immunity, applied on join and
-     * respawn. Implemented as Resistance V (amplifier 4 = 100% reduction) for
-     * {@code spawn-immunity-seconds} seconds. No effect when the config is 0.
+     * respawn. Implemented as Resistance V (amplifier 4 = 100% reduction) plus
+     * Fire Resistance for {@code spawn-immunity-seconds} seconds. Fire damage
+     * is on its own pre-Resistance code path in some sources, so we add it
+     * explicitly to cover spawning into lava / fire blocks. No effect when
+     * the config is 0.
      */
+    /**
+     * Per-player spawn-immunity expiry (system-millis). Implemented as a
+     * timestamp map + an ALLOW_DAMAGE hook in {@code JoinHandler} so the
+     * immunity covers everything (fire/lava/drown included) and never appears
+     * in the effects list — there's no MobEffect involved at all.
+     */
+    private static final Map<UUID, Long> SPAWN_IMMUNE_UNTIL = new ConcurrentHashMap<>();
+
     public static void applySpawnImmunity(ServerPlayer player) {
         int secs = LifeConfig.get().spawnImmunitySeconds;
         if (secs <= 0) return;
-        player.addEffect(new MobEffectInstance(
-            MobEffects.RESISTANCE, secs * 20, 4, false, false, false));
+        SPAWN_IMMUNE_UNTIL.put(player.getUUID(), System.currentTimeMillis() + secs * 1000L);
+    }
+
+    /** True while {@code id} is within their spawn-immunity window. */
+    public static boolean isSpawnImmune(UUID id) {
+        Long until = SPAWN_IMMUNE_UNTIL.get(id);
+        if (until == null) return false;
+        if (System.currentTimeMillis() < until) return true;
+        SPAWN_IMMUNE_UNTIL.remove(id);
+        return false;
+    }
+
+    /** Forgets any pending immunity for a player — e.g. on disconnect. */
+    public static void clearSpawnImmunity(UUID id) {
+        SPAWN_IMMUNE_UNTIL.remove(id);
     }
 
     private static void broadcastTabPacket(MinecraftServer server, ServerPlayer player) {
