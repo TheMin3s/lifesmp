@@ -50,6 +50,14 @@ public final class InteractHandler {
 
         data.addLives(sp.getUUID(), 1);
         held.shrink(1);
+        // Replace empty stacks explicitly + broadcast inventory changes, so
+        // the client always sees the shard removed even if vanilla's menu
+        // diffing doesn't pick up a bare shrink-to-zero.
+        if (held.isEmpty()) sp.setItemInHand(hand, ItemStack.EMPTY);
+        sp.inventoryMenu.broadcastChanges();
+        if (sp.containerMenu != sp.inventoryMenu) {
+            sp.containerMenu.broadcastChanges();
+        }
         LifeUtil.refreshTabName(server, sp);
         int now = data.getLives(sp.getUUID());
         LifeLog.info("[lifesmp] {} deposited 1 life by right-click (now {})",
