@@ -109,12 +109,21 @@ public final class LifeCommand {
         LifeLog.info("[lifesmp] {} withdrew {} life(s) (now {})",
             self.getGameProfile().name(), quantity, current - quantity);
         ItemStack shards = LifeItems.createLifeShard(quantity);
-        if (!self.getInventory().add(shards)) {
+        Inventory inv = self.getInventory();
+        if (!inv.add(shards)) {
             ServerLevel sl = self.level();
             ItemEntity drop = new ItemEntity(sl, self.getX(), self.getY(), self.getZ(), shards);
             drop.setDefaultPickUpDelay();
             sl.addFreshEntity(drop);
         }
+        // Mirror the deposit fix: when the player already owns Life Shards,
+        // Inventory.add stacks onto the existing stack (an in-place count bump),
+        // which the menu's slot diff cache doesn't reliably catch — so the new
+        // shard never appears client-side even though it exists server-side.
+        // Force a full resync. (On a fresh inventory the shard lands in an empty
+        // slot, which the diff does catch — hence it "works" on a test server.)
+        inv.setChanged();
+        self.containerMenu.broadcastFullState();
         LifeUtil.refreshTabName(server, self);
 
         final int finalQuantity = quantity;
