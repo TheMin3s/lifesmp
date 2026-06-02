@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -119,6 +120,63 @@ public final class MaskConfig {
     public static String maskFor(UUID id) {
         if (id == null) return null;
         return MASKS.get(id);
+    }
+
+    /** Outcome of {@link #setMask}. */
+    public enum SetResult { OK, CONFLICT, INVALID, NOT_LOADED, IO_ERROR }
+
+    /**
+     * Sets (or replaces) the mask for {@code id} and writes masks.json. Applies
+     * the same {@link #nameConflicts} guard as file loading, so a mask can't be
+     * pointed at another real player's name. The change is live immediately;
+     * callers should refresh tab-list display names afterwards.
+     */
+    public static synchronized SetResult setMask(UUID id, String name) {
+        if (path == null) return SetResult.NOT_LOADED;
+        if (id == null || name == null || name.isBlank()) return SetResult.INVALID;
+        if (nameConflicts(id, name)) return SetResult.CONFLICT;
+        MASKS.put(id, name);
+        return persist() ? SetResult.OK : SetResult.IO_ERROR;
+    }
+
+    /**
+     * Removes any mask on {@code id} and writes masks.json. Returns true if a
+     * mask existed and was removed, false if the player wasn't masked.
+     */
+    public static synchronized boolean clearMask(UUID id) {
+        if (path == null || id == null) return false;
+        if (MASKS.remove(id) == null) return false;
+        persist();
+        return true;
+    }
+
+    /** A read-only copy of the current id -&gt; mask map, in insertion order. */
+    public static synchronized Map<UUID, String> snapshot() {
+        return new LinkedHashMap<>(MASKS);
+    }
+
+    /**
+     * Writes the live map to masks.json (atomic temp-file swap). Like
+     * {@link LifeConfig#save()}, this rewrites the file from in-memory state, so
+     * any entries that were ignored at load time (conflicting names, the
+     * {@code _example} stub) are not preserved on the next managed change.
+     */
+    private static boolean persist() {
+        if (path == null) return false;
+        try {
+            Files.createDirectories(path.getParent());
+            JsonObject obj = new JsonObject();
+            for (Map.Entry<UUID, String> e : MASKS.entrySet()) {
+                obj.addProperty(e.getKey().toString(), e.getValue());
+            }
+            Path tmp = Files.createTempFile(path.getParent(), ".masks-", ".tmp");
+            Files.writeString(tmp, GSON.toJson(obj), StandardCharsets.UTF_8);
+            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
+            return true;
+        } catch (IOException e) {
+            LifeLog.warn("[lifesmp] failed to write masks.json: {}", e.getMessage());
+            return false;
+        }
     }
 
     private static void writeStub() {

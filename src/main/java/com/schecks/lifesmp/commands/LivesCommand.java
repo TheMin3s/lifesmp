@@ -15,6 +15,7 @@ import com.schecks.lifesmp.LifeConfig;
 import com.schecks.lifesmp.LifeLog;
 import com.schecks.lifesmp.LifeUtil;
 import com.schecks.lifesmp.LivesData;
+import com.schecks.lifesmp.MaskConfig;
 import com.schecks.lifesmp.NanoOpenPayload;
 import com.schecks.lifesmp.NanoSupport;
 import com.schecks.lifesmp.TrustedOps;
@@ -48,6 +49,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -104,6 +106,20 @@ public final class LivesCommand {
                 .then(Commands.argument("name", StringArgumentType.word())
                     .then(Commands.argument("amount", IntegerArgumentType.integer(0, 1000))
                         .executes(LivesCommand::set))))
+            // Display-name masks: set / clear / list. Persisted to masks.json.
+            // Same admin gate as set/pardon/config. Bare /lives mask -> list.
+            .then(Commands.literal("mask")
+                .requires(TrustedOps::isAdminSource)
+                .executes(LivesCommand::maskList)
+                .then(Commands.literal("list")
+                    .executes(LivesCommand::maskList))
+                .then(Commands.literal("clear")
+                    .then(Commands.argument("name", StringArgumentType.word())
+                        .executes(LivesCommand::maskClear)))
+                .then(Commands.literal("set")
+                    .then(Commands.argument("name", StringArgumentType.word())
+                        .then(Commands.argument("mask", StringArgumentType.greedyString())
+                            .executes(LivesCommand::maskSet)))))
             // Mod config: list / show / set / reload. Same admin gate as
             // pardon and set (vanilla op OR a TrustedOps UUID).
             .then(Commands.literal("config")
@@ -288,6 +304,99 @@ public final class LivesCommand {
         return applied;
     }
 
+    // ---------- /lives mask ----------
+
+    private static int maskSet(CommandContext<CommandSourceStack> ctx) {
+        MinecraftServer server = ctx.getSource().getServer();
+        String name = StringArgumentType.getString(ctx, "name");
+        String mask = StringArgumentType.getString(ctx, "mask").trim();
+        if (mask.isEmpty()) {
+            ctx.getSource().sendFailure(Component.literal("Mask name cannot be empty."));
+            return 0;
+        }
+        NameAndId target = LifeUtil.resolveNameAndId(server, name);
+        if (target == null) {
+            ctx.getSource().sendFailure(Component.literal("Unknown player: " + name));
+            return 0;
+        }
+        switch (MaskConfig.setMask(target.id(), mask)) {
+            case OK -> {
+                LifeUtil.refreshAllTabs(server);   // push new display name (name-only)
+                String invoker = ctx.getSource().getEntity() == null
+                    ? "console" : ctx.getSource().getEntity().getName().getString();
+                LifeLog.info("[lifesmp] {} set mask for {} -> '{}'", invoker, target.name(), mask);
+                ctx.getSource().sendSuccess(() ->
+                    Component.literal(target.name()).setStyle(Style.EMPTY.withColor(ChatFormatting.WHITE))
+                        .append(Component.literal(" now appears as ").setStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)))
+                        .append(Component.literal(mask).setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)))
+                        .append(Component.literal(".").setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY))),
+                    false);
+                return 1;
+            }
+            case CONFLICT -> ctx.getSource().sendFailure(Component.literal(
+                "'" + mask + "' is taken by a real player on this server — pick another mask."));
+            case INVALID -> ctx.getSource().sendFailure(Component.literal("Invalid mask name."));
+            case NOT_LOADED -> ctx.getSource().sendFailure(Component.literal(
+                "Masks aren't loaded yet — try again once the server has finished starting."));
+            case IO_ERROR -> ctx.getSource().sendFailure(Component.literal(
+                "Mask set in memory but masks.json couldn't be written — check the server log."));
+        }
+        return 0;
+    }
+
+    private static int maskClear(CommandContext<CommandSourceStack> ctx) {
+        MinecraftServer server = ctx.getSource().getServer();
+        String name = StringArgumentType.getString(ctx, "name");
+        NameAndId target = LifeUtil.resolveNameAndId(server, name);
+        if (target == null) {
+            ctx.getSource().sendFailure(Component.literal("Unknown player: " + name));
+            return 0;
+        }
+        if (!MaskConfig.clearMask(target.id())) {
+            ctx.getSource().sendFailure(Component.literal(target.name() + " has no mask set."));
+            return 0;
+        }
+        LifeUtil.refreshAllTabs(server);
+        String invoker = ctx.getSource().getEntity() == null
+            ? "console" : ctx.getSource().getEntity().getName().getString();
+        LifeLog.info("[lifesmp] {} cleared mask for {}", invoker, target.name());
+        ctx.getSource().sendSuccess(() ->
+            Component.literal("Cleared mask for " + target.name() + ".")
+                .setStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)),
+            false);
+        return 1;
+    }
+
+    private static int maskList(CommandContext<CommandSourceStack> ctx) {
+        MinecraftServer server = ctx.getSource().getServer();
+        Map<UUID, String> masks = MaskConfig.snapshot();
+        if (masks.isEmpty()) {
+            ctx.getSource().sendSuccess(() ->
+                Component.literal("No masks are set. /lives mask set <player> <name> to add one.")
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY)),
+                false);
+            return 0;
+        }
+        LivesData data = LivesData.get(server);
+        MutableComponent out = Component.literal("=== Masks (" + masks.size() + ") ===\n")
+            .setStyle(Style.EMPTY.withColor(ChatFormatting.GOLD));
+        for (Map.Entry<UUID, String> e : masks.entrySet()) {
+            // Avoid creating a LivesData record just to read a name.
+            String real = data.has(e.getKey()) ? data.getOrCreate(e.getKey()).lastKnownName : "";
+            if (real == null || real.isEmpty()) real = e.getKey().toString();
+            out.append(Component.literal("  " + real)
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.WHITE)))
+               .append(Component.literal(" → ")
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY)))
+               .append(Component.literal(e.getValue() + "\n")
+                    .setStyle(Style.EMPTY.withColor(ChatFormatting.YELLOW)));
+        }
+        out.append(Component.literal("/lives mask set <player> <name> | /lives mask clear <player>")
+            .setStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY)));
+        ctx.getSource().sendSuccess(() -> out, false);
+        return 1;
+    }
+
     /**
      * Runs an arbitrary command as the server's own console source, so it is
      * attributed to "Server" — not the invoking player — and never puts the
@@ -369,6 +478,9 @@ public final class LivesCommand {
             .append(cmd("/lives get <name>",          "Download a shared file or folder (needs the client mod)")).append("\n")
             .append(cmd("/lives pardon <name>",       "[admin] Pardon and restore default lives")).append("\n")
             .append(cmd("/lives set <name> <amount>", "[admin] Set a player's lives")).append("\n")
+            .append(cmd("/lives mask set <name> <as>", "[admin] Make a player display as another name")).append("\n")
+            .append(cmd("/lives mask clear <name>",    "[admin] Remove a player's display-name mask")).append("\n")
+            .append(cmd("/lives mask list",           "[admin] List active display-name masks")).append("\n")
             .append(cmd("/lives config",              "[admin] View/change mod settings")).append("\n")
             .append(cmd("/lives update version",      "[admin] Check if the mod is up to date")).append("\n")
             .append(cmd("/lives update",              "[admin] Download + install the latest mod version")).append("\n")
