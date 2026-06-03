@@ -35,6 +35,7 @@ public final class LifeConfig {
     private static volatile Path path;
 
     // ---- tunable settings (field initialisers are the defaults) ----
+    public boolean livesSystemEnabled = true;
     public int defaultLives = 10;
     public int maxLives = 15;
     public int craftLimit = 10;
@@ -114,6 +115,8 @@ public final class LifeConfig {
     }
 
     public static final List<Key> KEYS = List.of(
+        boolKey("lives-system-enabled", "Master switch — when false: no life loss on death, no bans, no kill rewards, and the /life shard commands are disabled",
+            c -> c.livesSystemEnabled, (c, v) -> c.livesSystemEnabled = (Boolean) v),
         intKey("default-lives", "Lives a new player starts with", 1, 1000,
             c -> c.defaultLives, (c, v) -> c.defaultLives = (Integer) v),
         intKey("max-lives", "Hard cap on active lives", 1, 1000,

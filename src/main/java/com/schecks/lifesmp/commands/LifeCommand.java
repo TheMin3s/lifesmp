@@ -44,10 +44,18 @@ public final class LifeCommand {
         );
     }
 
+    /** True (and sends a failure) when the lives system master switch is off. */
+    private static boolean lifeSystemDisabled(CommandSourceStack source) {
+        if (LifeConfig.get().livesSystemEnabled) return false;
+        source.sendFailure(Component.literal("The lives system is currently disabled."));
+        return true;
+    }
+
     private static int useCrystal(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         ServerPlayer self = ctx.getSource().getPlayerOrException();
         MinecraftServer server = self.level().getServer();
         if (server == null) return 0;
+        if (lifeSystemDisabled(ctx.getSource())) return 0;
 
         ItemStack held = self.getMainHandItem();
         if (!LifeItems.isRevivalCrystal(held)) {
@@ -93,6 +101,7 @@ public final class LifeCommand {
         ServerPlayer self = ctx.getSource().getPlayerOrException();
         MinecraftServer server = self.level().getServer();
         if (server == null) return 0;
+        if (lifeSystemDisabled(ctx.getSource())) return 0;
 
         LivesData data = LivesData.get(server);
         int current = data.getLives(self.getUUID());
@@ -143,6 +152,7 @@ public final class LifeCommand {
         ServerPlayer self = ctx.getSource().getPlayerOrException();
         MinecraftServer server = self.level().getServer();
         if (server == null) return 0;
+        if (lifeSystemDisabled(ctx.getSource())) return 0;
 
         LivesData data = LivesData.get(server);
         int current = data.getLives(self.getUUID());

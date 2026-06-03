@@ -120,6 +120,15 @@ public final class LivesCommand {
                     .then(Commands.argument("name", StringArgumentType.word())
                         .then(Commands.argument("mask", StringArgumentType.greedyString())
                             .executes(LivesCommand::maskSet)))))
+            // Master switch for the whole lives system. Backed by the
+            // lives-system-enabled config key, so it persists across restarts
+            // and also shows under /lives config.
+            .then(Commands.literal("enable")
+                .requires(TrustedOps::isAdminSource)
+                .executes(ctx -> setSystemEnabled(ctx, true)))
+            .then(Commands.literal("disable")
+                .requires(TrustedOps::isAdminSource)
+                .executes(ctx -> setSystemEnabled(ctx, false)))
             // Mod config: list / show / set / reload. Same admin gate as
             // pardon and set (vanilla op OR a TrustedOps UUID).
             .then(Commands.literal("config")
@@ -304,6 +313,32 @@ public final class LivesCommand {
         return applied;
     }
 
+    // ---------- /lives enable | disable ----------
+
+    private static int setSystemEnabled(CommandContext<CommandSourceStack> ctx, boolean enabled) {
+        MinecraftServer server = ctx.getSource().getServer();
+        LifeConfig cfg = LifeConfig.get();
+        if (cfg.livesSystemEnabled == enabled) {
+            ctx.getSource().sendFailure(Component.literal(
+                "The lives system is already " + (enabled ? "enabled" : "disabled") + "."));
+            return 0;
+        }
+        cfg.livesSystemEnabled = enabled;
+        LifeConfig.save();
+        // Show/hide the [N❤] tab-list prefix right away.
+        LifeUtil.refreshAllTabs(server);
+
+        String invoker = ctx.getSource().getEntity() == null
+            ? "console" : ctx.getSource().getEntity().getName().getString();
+        LifeLog.info("[lifesmp] {} {} the lives system", invoker, enabled ? "enabled" : "disabled");
+
+        server.getPlayerList().broadcastSystemMessage(
+            Component.literal("The lives system has been " + (enabled ? "enabled" : "disabled") + ".")
+                .setStyle(Style.EMPTY.withColor(enabled ? ChatFormatting.GREEN : ChatFormatting.RED)),
+            false);
+        return 1;
+    }
+
     // ---------- /lives mask ----------
 
     private static int maskSet(CommandContext<CommandSourceStack> ctx) {
@@ -481,6 +516,8 @@ public final class LivesCommand {
             .append(cmd("/lives mask set <name> <as>", "[admin] Make a player display as another name")).append("\n")
             .append(cmd("/lives mask clear <name>",    "[admin] Remove a player's display-name mask")).append("\n")
             .append(cmd("/lives mask list",           "[admin] List active display-name masks")).append("\n")
+            .append(cmd("/lives disable",             "[admin] Turn the whole lives system off")).append("\n")
+            .append(cmd("/lives enable",              "[admin] Turn the lives system back on")).append("\n")
             .append(cmd("/lives config",              "[admin] View/change mod settings")).append("\n")
             .append(cmd("/lives update version",      "[admin] Check if the mod is up to date")).append("\n")
             .append(cmd("/lives update",              "[admin] Download + install the latest mod version")).append("\n")

@@ -29,8 +29,10 @@ public final class DeathHandler {
             ServerLevel level = victim.level();
             MinecraftServer server = level.getServer();
             if (server == null) return;
-            LivesData data = LivesData.get(server);
             LifeConfig cfg = LifeConfig.get();
+            // Master switch off: deaths cost nothing, no kill rewards, no bans.
+            if (!cfg.livesSystemEnabled) return;
+            LivesData data = LivesData.get(server);
 
             int victimLives = data.addLives(victim.getUUID(), -cfg.lifeLossPerDeath);
             LifeLog.info("[lifesmp] {} died (lives now {})", victim.getGameProfile().name(), victimLives);

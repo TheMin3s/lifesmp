@@ -19,7 +19,8 @@ public abstract class PlayerEntityMixin {
     @Inject(method = "getTabListDisplayName", at = @At("HEAD"), cancellable = true)
     private void lifesmp$injectListName(CallbackInfoReturnable<Component> cir) {
         ServerPlayer sp = (ServerPlayer)(Object) this;
-        boolean withLives = LifeConfig.get().tablistDisplay;
+        // No lives prefix while the system is switched off — masks still apply.
+        boolean withLives = LifeConfig.get().tablistDisplay && LifeConfig.get().livesSystemEnabled;
         String mask = MaskConfig.maskFor(sp.getUUID());
         if (!withLives && mask == null) return;          // vanilla — neither feature active
 

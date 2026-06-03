@@ -78,6 +78,8 @@ public final class JoinHandler {
             LifeLog.info("[lifesmp] {} rejoined ({} lives)",
                 player.getGameProfile().name(), data.getLives(player.getUUID()));
         }
+        // Don't greet players with a lives count while the system is disabled.
+        if (!LifeConfig.get().livesSystemEnabled) return;
         int lives = data.getLives(player.getUUID());
         player.sendSystemMessage(
             Component.literal("You have ").setStyle(Style.EMPTY.withColor(ChatFormatting.GRAY))
