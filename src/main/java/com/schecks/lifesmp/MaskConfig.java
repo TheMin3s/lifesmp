@@ -19,18 +19,31 @@ import java.util.UUID;
 
 /**
  * Per-player display-name masks: real UUID -&gt; the name everyone sees in the
- * tab list, above the player's head, in death messages, advancement
+ * tab list, above the player's head, in chat, death messages, advancement
  * broadcasts, and most other "this player did X" UI lines.
  *
- * Loaded from {@code config/lifesmp/masks.json} at server start; edit the file
- * and run {@code /lives config reload} to pick up changes without restarting.
+ * Manage live with {@code /lives mask set|clear|list}, or edit
+ * {@code config/lifesmp/masks.json} and run {@code /lives config reload}.
  *
- * <h3>Deliberate scope limits</h3>
- * Masks are DISPLAY ONLY. Vanilla chat still shows the player's real account
- * name as the sender (so impersonation in chat isn't possible), and the server
- * console + {@code lifesmp.log} always record the real account — the audit
- * trail is preserved. If you set a mask that happens to match another real
- * Minecraft account's name, that's on you; nothing in this file prevents it.
+ * <h3>How a mask reaches each surface</h3>
+ * <ul>
+ *   <li>Server-rendered text (chat sender, death/join/leave, advancements,
+ *       {@code /msg} output) — {@code PlayerDisplayNameMixin} overrides
+ *       {@code getDisplayName()}.</li>
+ *   <li>Tab list — {@code PlayerEntityMixin} overrides
+ *       {@code getTabListDisplayName()} (with the {@code [N❤]} lives prefix).</li>
+ *   <li>Name tag above the head, on vanilla clients —
+ *       {@code PlayerInfoMaskMixin} rewrites the ADD_PLAYER profile name.</li>
+ *   <li>Command targeting ({@code /msg <mask>}, {@code /tp <mask>}, …) —
+ *       {@code PlayerListMixin} adds a mask fallback to {@code getPlayerByName}.</li>
+ * </ul>
+ *
+ * <h3>Scope</h3>
+ * Masking is full and visible: a masked player can be impersonated in chat,
+ * since the sender name follows the mask. Only the server console and
+ * {@code lifesmp.log} keep the real account, preserving the audit trail. A mask
+ * may not equal another real player's name on this server — {@link #nameConflicts}
+ * rejects that at set time and drops it at join (see {@link #onPlayerJoined}).
  */
 public final class MaskConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -120,6 +133,21 @@ public final class MaskConfig {
     public static String maskFor(UUID id) {
         if (id == null) return null;
         return MASKS.get(id);
+    }
+
+    /**
+     * Reverse lookup: the UUID whose mask equals {@code name} (case-insensitive),
+     * or null if no mask matches. Lets commands resolve a masked player when an
+     * admin/player types the mask name (e.g. {@code /msg <mask>}). Masks can
+     * never equal a real player's name (see {@link #nameConflicts}), so this
+     * never shadows a real account.
+     */
+    public static synchronized UUID findByMask(String name) {
+        if (name == null || name.isBlank()) return null;
+        for (Map.Entry<UUID, String> e : MASKS.entrySet()) {
+            if (e.getValue().equalsIgnoreCase(name)) return e.getKey();
+        }
+        return null;
     }
 
     /** Outcome of {@link #setMask}. */
